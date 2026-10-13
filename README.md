@@ -1,88 +1,72 @@
-# Vesy_v1
+# Vesy — весы ESP32/HX711, управление через USB
 
-ESP32-based scale using HX711 load cell amplifier and GyverHX711 library. Supports optional calibration and filtered weight output over Serial.
+Прошивка DOIT ESP32 DEVKIT V1: поток веса и команды через USB COM-порт.
+WiFi, HTTP, mDNS и OTA удалены из исходников и конфигурации. Единственное окружение — `esp32_usb`.
 
-## Overview
+Подключение HX711: **DT → GPIO14, SCK → GPIO27**, канал A, усиление 128.
+Serial: **115200, 8N1**, окончание команды LF или CRLF.
 
-- **Board**: DOIT ESP32 DEVKIT V1
-- **Sensor**: HX711 (load cell amplifier)
-- **Library**: GyverHX711
-- **Output**: Filtered weight (grams) printed to Serial at 115200 baud
-- **Calibration**: Runtime trigger via Serial `c`; value stored in NVS and restored on boot
+## Сборка и прошивка
 
-## Hardware Connections
-
-| HX711 Pin | ESP32 Pin | Config constant |
-|-----------|-----------|-----------------|
-| DT (Data) | GPIO 14   | `HX711_DT`      |
-| SCK (Clock) | GPIO 12 | `HX711_SCL`     |
-| VCC       | 3.3V      | —               |
-| GND       | GND       | —               |
-
-Calibration requires a known reference weight (default: 275 g). Ensure the load cell and HX711 are powered correctly (3.3V recommended).
-
-## Firmware Structure
-
-```
-main.cpp
-    ├── config.h / config.cpp (calibration_factor, pins, constants)
-    ├── device/device.h + device.cpp (HX711, filtering, tare, empty detection)
-    └── calibration/calibration.h + calibration.cpp (reference-weight calibration)
+```powershell
+pio run -e esp32_usb
+pio run -e esp32_usb -t upload
+pio device monitor -e esp32_usb
 ```
 
-**Flow**: Startup → optional calibration (if enabled) → main loop reads sensor → filtered weight output.
+В `platformio.ini` COM4 — локальная настройка; укажите фактический порт платы.
+Если pio отсутствует в PATH, используйте `C:\Users\winda\.platformio\penv\Scripts\platformio.exe`.
+Перед загрузкой освободите COM-порт: закройте монитор или отключите клиент.
 
-| Module | Purpose |
-|--------|---------|
-| `main.cpp` | Entry point, calibration vs normal mode, periodic Serial output |
-| `config.h` / `config.cpp` | Pins, filter coefficient, intervals, thresholds, `calibration_factor`, NVS load/save |
-| `device/` | HX711 handling, tare, exponential filter, empty detection |
-| `calibration/` | Interactive calibration with reference weight |
+После старта прошивка собирает свежий устойчивый ноль (около 2 секунд при 10 SPS).
+Платформа в этот момент должна быть пустой. Стартовая тара, ручная тара и переключатели
+не сохраняются; сохраняется только коэффициент. Автотара при старте **выключена**,
+поток веса **включён**.
 
-## Build & Flash
+## Команды
 
-1. Open the project folder in PlatformIO (VS Code / Cursor).
-2. Build:
-   ```bash
-   platformio run -e esp32doit-devkit-v1
-   ```
-3. Upload (USB):
-   ```bash
-   platformio run -e esp32doit-devkit-v1 --target upload
-   ```
-4. Monitor Serial (115200 baud):
-   ```bash
-   platformio device monitor -b 115200
-   ```
+Запрос: `@<id> <команда>\n`, ID 1…65535.
+Ответ: `#R <id> OK ... done=1` или `#R <id> ERR <код> done=1`.
+Длительная операция сначала получает ACK, затем событие `#E <job_id> ...`.
+Обычные строки веса сохраняют формат `123.45 S\n` / `123.45 U\n`.
 
-## Calibration Procedure
+```text
+@1 STATUS
+@2 TARE
+@3 SET FACTOR -120.5
+@4 SAVE
+@5 CAL START 275
+```
 
-1. Open Serial monitor at 115200 baud.
-2. Type `c` and press Enter to start calibration.
-3. Remove all weight from the scale. Wait for "Установите нулевой вес и подождите...".
-4. Place the reference weight (275 g by default) on the scale.
-5. Wait 10 seconds as instructed.
-6. The firmware collects data for ~3 seconds and computes `calibration_factor`.
-7. When "Калибровка завершена!" appears, calibration is done and saved to NVS.
-8. The calibration value is restored automatically on every reboot.
+Полный набор: HELP, STATUS, GET FACTOR, GET RAW, TARE, SET FACTOR,
+SAVE, LOAD, AUTO_TARE ON/OFF, STREAM ON/OFF,
+CAL START/ZERO/LOAD/STATUS/APPLY/CANCEL.
 
-## Extending the Project
+Калибровка: начать → освободить платформу → CAL ZERO → дождаться CAL_WAIT_LOAD →
+установить эталон → CAL LOAD → дождаться CAL_REVIEW → CAL APPLY → SAVE.
 
-Planned areas for future development:
+[Спецификация протокола](docs/DEBUG_COMMANDS_GUIDE_RU.md) описывает ответы, ошибки,
+повторы запросов и числовые ограничения. При недостоверном/устаревшем ADC или активной
+операции обычный поток веса приостанавливается; STATUS продолжает работать.
 
-- **WiFi / Web UI**: Use existing `lib_deps` (WiFi, WebServer) to expose weight over HTTP.
-- **Unit selection**: Grams, kilograms, ounces.
-- **State machine**: BOOT, CALIBRATING, IDLE, MEASURING, ERROR for clearer logic.
+## Инструкция для разработки клиентского приложения
 
-## Roadmap (Prioritized)
+Этот проект содержит прошивку и её проверки. Разработка приложения ведётся отдельно.
+[Полная текстовая инструкция для другого диалога](docs/CLIENT_APP_INSTRUCTIONS_RU.txt)
+описывает все кнопки, протокол, состояния, ошибки и правила обмена без готового кода приложения.
 
-| Priority | Task | Notes |
-|----------|------|-------|
-| 1 | ~~Persistent calibration (Preferences/NVS)~~ | Done: saved on calibration, loaded at boot |
-| 2 | ~~Runtime calibration trigger~~ | Done: Serial `c` command |
-| 3 | WiFi + simple web page | Expose current weight and status |
-| 4 | Inline documentation | Document each module and function |
-| 5 | Logging helper | Centralize Serial output |
-| 6 | State machine | Simplify mode handling as features grow |
-| 7 | Unit selection | Grams, kg, oz |
-| 8 | Error handling | Sensor disconnect, unstable readings, overrange |
+## Проверки
+
+```powershell
+python test/run_native.py
+```
+
+Native-тесты компилируют реальные src/*.cpp с имитацией ADC/UART/NVS/времени.
+Нужен g++/clang++ или локальный Zig:
+`python -m pip install --target .pio/host-tools ziglang==0.13.0`.
+
+Код: config — настройки/NVS; device — единственное чтение ADC и фильтр;
+operations — тара/калибровка; commands — RX/команды/кэш ID;
+protocol — очередь TX; main — общий цикл.
+
+[Анализ исходной версии](docs/CODE_ANALYSIS_RU.md) оставлен как исторический документ.

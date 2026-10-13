@@ -1,36 +1,39 @@
 #pragma once
+#include <stdint.h>
 
-#include <GyverHX711.h>
+constexpr uint8_t HX711_DT = 14;
+constexpr uint8_t HX711_SCL = 27;
+constexpr float DEFAULT_CALIBRATION_FACTOR = -118.217292f;
+// Technical input limits; load capacity must be specified for the actual scale.
+constexpr float FACTOR_ABS_MIN = 0.01f;
+constexpr float FACTOR_ABS_MAX = 1000000.0f;
+constexpr float REFERENCE_MIN_GRAMS = 1.0f;
+constexpr float REFERENCE_MAX_GRAMS = 100000.0f;
+constexpr float FILTER_COEF = 0.3f;
+constexpr float EMPTY_THRESHOLD = 10.0f;
+constexpr uint32_t OUTPUT_INTERVAL = 100;
+constexpr uint8_t STABILITY_WINDOW = 8;
+constexpr float STABILITY_THRESHOLD = 1.0f;
+constexpr uint32_t SENSOR_TIMEOUT_MS = 1000;
+constexpr uint32_t BOOT_SETTLE_MS = 500;
+constexpr uint32_t SAMPLE_SETTLE_MS = 400;
+constexpr uint32_t SAMPLE_TIMEOUT_MS = 5000;
+constexpr uint32_t USER_TIMEOUT_MS = 60000;
+constexpr uint8_t OPERATION_SAMPLES = 16;
+constexpr int32_t SAMPLE_MAX_SPREAD_ADC = 240;
+constexpr int32_t CAL_MIN_SIGNAL_ADC = 64;
+constexpr uint32_t AUTO_TARE_DWELL_MS = 10000;
+constexpr float AUTO_TARE_MAX_GRAMS = 0.5f;
 
-// HX711 пины
-#define HX711_DT 14
-#define HX711_SCL 27
-#define HX711_GAIN HX_GAIN128_A
-
-// WiFi
-#define WIFI_SSID      "mgts_143"
-#define WIFI_PASSWORD  "89164922249"
-#define WIFI_HOSTNAME  "vesy"
-
-// Калибровка
-extern float calibration_factor;
-void loadCalibrationFactor();
-void saveCalibrationFactor();
-
-// Фильтрация
-const float FILTER_COEF = 0.3;
-
-// Логика веса
-const float EMPTY_THRESHOLD = 10.0;
-const unsigned long TARE_INTERVAL = 10000;
-
-// Интервал вывода данных в USB COM-порт.
-// 100 мс => 10 Гц (требование: не реже 5–10 раз/сек).
-const unsigned long OUTPUT_INTERVAL = 100;
-
-// --- Определение стабильности веса (НОВАЯ логика) ------------------------
-// Поверх существующей фильтрации (ничего в фильтре не меняем).
-// Берём окно из последних N отсчётов HX711 и смотрим разброс (max-min).
-// Если разброс ниже порога — вес стабилен (флаг 'S'), иначе нестабилен ('U').
-const int   STABILITY_WINDOW    = 8;     // размер окна, отсчётов (~0.8 c при 10 SPS)
-const float STABILITY_THRESHOLD = 1.0;   // порог разброса, граммы
+enum class ConfigResult { OK, NO_SAVED_FACTOR, INVALID_SAVED_FACTOR,
+                          NVS_OPEN_FAILED, NVS_WRITE_FAILED, OUT_OF_RANGE };
+enum class FactorSource { FIRMWARE_DEFAULT, NVS, MANUAL, CALIBRATION };
+bool isCalibrationFactorValid(float value);
+ConfigResult loadCalibrationFactor();
+ConfigResult saveCalibrationFactor();
+ConfigResult applyCalibrationFactor(float value, FactorSource source);
+float getCalibrationFactor();
+FactorSource getFactorSource();
+bool hasUnsavedCalibrationFactor();
+const char* configResultName(ConfigResult result);
+const char* factorSourceName(FactorSource source);
