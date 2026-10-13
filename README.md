@@ -15,7 +15,7 @@ ESP32-based scale using HX711 load cell amplifier and GyverHX711 library. Suppor
 | HX711 Pin | ESP32 Pin | Config constant |
 |-----------|-----------|-----------------|
 | DT (Data) | GPIO 14   | `HX711_DT`      |
-| SCK (Clock) | GPIO 12 | `HX711_SCL`     |
+| SCK (Clock) | GPIO 27 | `HX711_SCL`     |
 | VCC       | 3.3V      | —               |
 | GND       | GND       | —               |
 
